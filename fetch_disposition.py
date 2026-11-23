@@ -396,15 +396,40 @@ def classify(code, announce, att):
     return ("混" if u and d else "漲" if u else "跌"), "、".join(why[:3])
 
 
-def apply_direction(records, att):
+EST_PCT = 5.0  # 推測用：處置公布日起累計漲跌幅超過此值（%）才標示方向
+
+
+def estimate_by_price(code, announce, prices):
+    """注意資料不足時的備援：用公布日（含）以後已記錄的每日漲跌幅加總來推測方向。
+    這是推測，不是交易所寫的原因；行情是從開始記錄日才累積，天數有限。"""
+    days = {d: q for d, q in prices.get(code, {}).items() if d >= announce and q.get("p") is not None}
+    if not days:
+        return "", ""
+    tot = round(sum(q["p"] for q in days.values()), 2)
+    if tot >= EST_PCT:
+        return "漲", f"公布後{len(days)}日累計{tot:+.2f}%"
+    if tot <= -EST_PCT:
+        return "跌", f"公布後{len(days)}日累計{tot:+.2f}%"
+    return "", ""
+
+
+def apply_direction(records, att, prices):
     for r in records:
         if r["kind"] != "股票/ETF":
             r.setdefault("dir", "")
             r.setdefault("why", "")
+            r.setdefault("est", "")
+            r.setdefault("est_why", "")
             continue
-        dr, why = classify(r["code"], r["announce"] or r["start"], att)
+        anchor = r["announce"] or r["start"]
+        dr, why = classify(r["code"], anchor, att)
         if dr or "dir" not in r:  # 查不到新資料時保留先前判斷
             r["dir"], r["why"] = dr, why
+        # 交易所的原因資料優先；沒有時才用價格推測
+        if r["dir"]:
+            r["est"], r["est_why"] = "", ""
+        else:
+            r["est"], r["est_why"] = estimate_by_price(r["code"], anchor, prices)
 
 
 def main(argv):
@@ -445,9 +470,11 @@ def main(argv):
     records = sorted(merged.values(), key=lambda r: (r["start"], r["market"], r["code"]))
     prices = update_prices(old_prices, records, today, meta)
     attention = update_attention(old_att, today, meta)
-    apply_direction(records, attention)
+    apply_direction(records, attention, prices)
     cnt = {k: sum(1 for r in records if r.get("dir") == k) for k in ("漲", "跌", "混", "")}
-    meta["方向"] = {"ok": True, "漲": cnt["漲"], "跌": cnt["跌"], "混": cnt["混"], "未明": cnt[""]}
+    est = {k: sum(1 for r in records if r.get("est") == k) for k in ("漲", "跌")}
+    meta["方向"] = {"ok": True, "漲": cnt["漲"], "跌": cnt["跌"], "混": cnt["混"], "未明": cnt[""],
+                  "價格推測漲": est["漲"], "價格推測跌": est["跌"]}
     print("方向判斷：", meta["方向"])
     out = {
         "updated": datetime.now(TZ).isoformat(timespec="seconds"),
