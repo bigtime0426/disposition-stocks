@@ -399,10 +399,11 @@ def classify(code, announce, att):
 EST_PCT = 5.0  # 推測用：處置公布日起累計漲跌幅超過此值（%）才標示方向
 
 
-def estimate_by_price(code, announce, prices):
+def estimate_by_price(code, announce, end, prices):
     """注意資料不足時的備援：用公布日（含）以後已記錄的每日漲跌幅加總來推測方向。
     這是推測，不是交易所寫的原因；行情是從開始記錄日才累積，天數有限。"""
-    days = {d: q for d, q in prices.get(code, {}).items() if d >= announce and q.get("p") is not None}
+    days = {d: q for d, q in prices.get(code, {}).items()
+            if announce <= d <= end and q.get("p") is not None}  # 只算處置公布日到處置結束日之間
     if not days:
         return "", ""
     tot = round(sum(q["p"] for q in days.values()), 2)
@@ -429,7 +430,7 @@ def apply_direction(records, att, prices):
         if r["dir"]:
             r["est"], r["est_why"] = "", ""
         else:
-            r["est"], r["est_why"] = estimate_by_price(r["code"], anchor, prices)
+            r["est"], r["est_why"] = estimate_by_price(r["code"], anchor, r["end"], prices)
 
 
 def main(argv):
