@@ -201,14 +201,111 @@ def fetch_market(market, urls):
     return list(merged.values()), used, errors
 
 
+# ---------------------------------------------------------------- 每日行情
+PRICE_KEEP_DAYS = 120  # 每檔股票保留的行情天數
+
+QUOTE_SOURCES = {
+    "上市": [
+        "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY_ALL?response=json",
+        "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+    ],
+    "上櫃": [
+        "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes",
+        "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc?response=json&type=EW",
+    ],
+}
+
+
+def num(v):
+    """'+3.00' / '1,234.5' / '<p>+</p>2' -> float；'--'、空白、非數字 -> None。"""
+    t = re.sub(r"<[^>]*>", "", str(v)).replace(",", "").strip()
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def payload_date(payload):
+    if isinstance(payload, dict):
+        if payload.get("date"):
+            return parse_date(payload["date"])
+        t = payload.get("tables")
+        if t and isinstance(t[0], dict) and t[0].get("date"):
+            return parse_date(t[0]["date"])
+    return None
+
+
+def normalize_quote(row, top_date):
+    code = pick(row, ["證券代號", "代號", "Code"])
+    o = num(pick(row, ["開盤", "Opening", "Open"]) or "")
+    c = num(pick(row, ["收盤", "Closing", "Close"]) or "")
+    if not code or not c or c <= 0:
+        return None
+    if o is not None and o <= 0:
+        o = None
+    chg = num(pick(row, ["漲跌價差", "漲跌", "Change"]) or "")
+    d = top_date or parse_date(pick(row, ["Date", "日期"]) or "")
+    if not d:
+        return None
+    pct = None
+    if chg is not None and c - chg > 0:
+        pct = round(chg / (c - chg) * 100, 2)
+    return code, d.isoformat(), {"o": o, "c": c, "chg": chg, "p": pct}
+
+
+def fetch_quotes(market):
+    """回傳 ({code: (date, quote)}, 來源網址, 錯誤)；用第一個成功的來源。"""
+    errors = []
+    for url in QUOTE_SOURCES[market]:
+        try:
+            payload = http_json(url)
+            top = payload_date(payload)
+            out = {}
+            for row in rows_from(payload):
+                q = normalize_quote(row, top)
+                if q:
+                    out[q[0]] = (q[1], q[2])
+            if out:
+                return out, url, errors
+            errors.append(f"{url}: 沒有可解析的行情")
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{url}: {type(e).__name__}: {e}")
+    return None, None, errors
+
+
+def update_prices(prices, records, today, meta):
+    """把最新行情併入 prices[code][date]；只保留處置股票/ETF 的代號。"""
+    want = {r["code"]: r["market"] for r in records if r["kind"] == "股票/ETF"}
+    keep_from = (today - timedelta(days=PRICE_KEEP_DAYS)).isoformat()
+    prices = {c: {d: q for d, q in v.items() if d >= keep_from}
+              for c, v in prices.items() if c in want}
+    for market in QUOTE_SOURCES:
+        quotes, used, errs = fetch_quotes(market)
+        if quotes is None:
+            meta[market + "行情"] = {"ok": False, "errors": errs}
+            print(f"[{market}行情] 失敗：{errs}", file=sys.stderr)
+            continue
+        hit = 0
+        for code, (d, q) in quotes.items():
+            if want.get(code) == market:
+                prices.setdefault(code, {})[d] = q
+                hit += 1
+        dates = sorted({d for d, _ in quotes.values()})
+        meta[market + "行情"] = {"ok": True, "source": used, "rows": len(quotes),
+                                  "matched": hit, "date": dates[-1] if dates else ""}
+        print(f"[{market}行情] 全市場 {len(quotes)} 檔，處置股命中 {hit} 檔，日期 {dates[-1:]}")
+    return prices
+
+
 def main(argv):
     today = datetime.now(TZ).date()
-    old = []
+    old, old_prices = [], {}
     if OUT.exists():
         try:
-            old = json.loads(OUT.read_text(encoding="utf-8")).get("records", [])
+            prev = json.loads(OUT.read_text(encoding="utf-8"))
+            old, old_prices = prev.get("records", []), prev.get("prices", {})
         except Exception:  # noqa: BLE001
-            old = []
+            old, old_prices = [], {}
 
     merged, meta, ok_any = {}, {}, False
     cutoff = (today - timedelta(days=KEEP_DAYS)).isoformat()
@@ -235,13 +332,15 @@ def main(argv):
         return 1
 
     records = sorted(merged.values(), key=lambda r: (r["start"], r["market"], r["code"]))
+    prices = update_prices(old_prices, records, today, meta)
     out = {
         "updated": datetime.now(TZ).isoformat(timespec="seconds"),
         "meta": meta,
         "records": records,
+        "prices": prices,
     }
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"寫入 {len(records)} 筆到 {OUT.name}")
+    print(f"寫入 {len(records)} 筆處置、{len(prices)} 檔行情到 {OUT.name}")
     return 0
 
 
