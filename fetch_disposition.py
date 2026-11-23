@@ -121,9 +121,18 @@ def match_interval(text):
     return f"{n}分鐘" if n else ""
 
 
+LINK_TAIL = re.compile(r"\s*[\(（][^)）]*(?:\.html|https?:|\.\./)[^)）]*[\)）]\s*$")
+
+
+def clean_name(name):
+    """櫃買名稱後面會附詳情連結，例如 聯一光(../../xxx.html?code=3441)，去掉。"""
+    return LINK_TAIL.sub("", str(name)).strip()
+
+
 def kind_of(code):
-    if re.fullmatch(r"\d{4}[A-Z]?", code):
-        return "股票/ETF"
+    if (re.fullmatch(r"\d{4}[A-Z]?", code) or re.fullmatch(r"91\d{4}", code)
+            or re.fullmatch(r"00\d{2,4}[A-Z]?", code)):
+        return "股票/ETF"  # 含台灣存託憑證（91xxxx）
     if re.fullmatch(r"0\d{5}|[78]\d{5}", code):
         return "權證"
     if re.fullmatch(r"\d{5}", code):
@@ -151,7 +160,7 @@ def normalize(row, market):
     code = pick(row, ["代號", "Code"])
     if not code:
         code = next((v for v in text_vals if re.fullmatch(r"\d{4,6}[A-Z]?", v.strip())), "")
-    name = pick(row, ["證券名稱", "名稱", "Name"])
+    name = clean_name(pick(row, ["證券名稱", "名稱", "Name"]))
     if not code or not name:
         return None
     ann = parse_date(pick(row, ["公布日期", "Date"]) or "")
@@ -204,6 +213,8 @@ def main(argv):
     merged, meta, ok_any = {}, {}, False
     cutoff = (today - timedelta(days=KEEP_DAYS)).isoformat()
     for r in old:
+        r["name"] = clean_name(r["name"])
+        r["kind"] = kind_of(r["code"])
         if r["end"] >= cutoff:
             merged[(r["market"], r["code"], r["start"], r["end"])] = r
 
