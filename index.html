@@ -89,6 +89,7 @@ const wk='日一二三四五六';
 const fmt=s=>s?s.slice(5).replace('-','/')+'('+wk[new Date(s+'T00:00:00').getDay()]+')':'';
 const status=r=>r.end<T0?'done':(r.start>T0?'soon':'run');
 const lab={run:['處置中','t-run'],soon:['即將開始','t-soon'],done:['已結束','t-done']};
+const cn=n=>String(n??'').replace(/\s*[\(（][^)）]*(?:\.html|https?:|\.\.\/)[^)）]*[\)）]\s*$/,'').trim();
 const sd=s=>s?s.slice(5).replace('-','/'):'';
 const fx=v=>v==null?'—':Number(v).toFixed(2);
 const pct=q=>q.p==null?'—':(q.p>0?'+':'')+q.p.toFixed(2)+'%';
@@ -126,7 +127,7 @@ function render(){
     (S.other||r.kind==='股票/ETF')&&
     (S.mkt==='all'||r.market===S.mkt)&&
     (S.status==='all'||status(r)===S.status)&&
-    (!S.q||(r.code+r.name).toLowerCase().includes(S.q)));
+    (!S.q||(r.code+cn(r.name)).toLowerCase().includes(S.q)));
   const key=S.group;
   const groups={};
   rows.forEach(r=>(groups[r[key]]??=[]).push(r));
@@ -148,7 +149,7 @@ function render(){
       const pr=latest(r.code);
       const cls=pr&&pr.p!=null?(pr.p>0?'up':pr.p<0?'dn':''):'';
       const px=pr?[fx(pr.c),pct(pr),fx(pr.o)]:['—','—','—'];
-      return `<tr class="row" data-code="${esc(r.code)}"><td class="code"><span class="dot ${c}" title="${l}">●</span>${esc(r.code)}</td><td class="nm">${esc(r.name)}</td><td class="num ${cls}">${px[0]}</td><td class="num ${cls}">${px[1]}</td><td class="num">${px[2]}</td><td>${sd(r.start)}~${sd(r.end)}</td><td>${left}</td><td class="mk x">${esc(r.market)}</td><td class="x">${esc(r.count)}</td><td class="x">${esc(r.measure)}</td><td class="x">${esc(r.interval)}</td><td class="x">${esc(r.condition)}</td></tr>`}).join('')+
+      return `<tr class="row" data-code="${esc(r.code)}"><td class="code"><span class="dot ${c}" title="${l}">●</span>${esc(r.code)}</td><td class="nm">${esc(cn(r.name))}</td><td class="num ${cls}">${px[0]}</td><td class="num ${cls}">${px[1]}</td><td class="num">${px[2]}</td><td>${sd(r.start)}~${sd(r.end)}</td><td>${left}</td><td class="mk x">${esc(r.market)}</td><td class="x">${esc(r.count)}</td><td class="x">${esc(r.measure)}</td><td class="x">${esc(r.interval)}</td><td class="x">${esc(r.condition)}</td></tr>`}).join('')+
     `</tbody></table></div></section>`}).join('');
 }
 
