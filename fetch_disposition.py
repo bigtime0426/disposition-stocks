@@ -297,15 +297,126 @@ def update_prices(prices, records, today, meta):
     return prices
 
 
+# ---------------------------------------------------------------- 處置方向（漲／跌）
+ATT_KEEP_DAYS = 60   # 注意交易資訊摘要保留天數
+ATT_WINDOW = 14      # 處置公布日前幾天內的注意紀錄會被納入判斷
+ATT_LOOKBACK = 20    # 證交所以日期區間回查的天數
+
+SNIP_RE = re.compile(r"(漲幅|跌幅)達\s*([\d.]+)\s*%")
+
+
+def notice_sources(today):
+    s0 = (today - timedelta(days=ATT_LOOKBACK)).strftime("%Y%m%d")
+    s1 = today.strftime("%Y%m%d")
+    return {
+        "上市": [
+            f"https://www.twse.com.tw/rwd/zh/announcement/notice?startDate={s0}&endDate={s1}&response=json",
+            "https://openapi.twse.com.tw/v1/announcement/notice",
+        ],
+        "上櫃": [
+            "https://www.tpex.org.tw/openapi/v1/tpex_trading_warning_information",
+            "https://www.tpex.org.tw/www/zh-tw/bulletin/attention?response=json",
+        ],
+    }
+
+
+def summarize_notice(text):
+    """注意交易資訊原文 -> {'u': 漲幅次數, 'd': 跌幅次數, 'w': 摘要}。"""
+    snips = SNIP_RE.findall(text or "")
+    up = [f"{k}{v}%" for k, v in snips if k == "漲幅"]
+    dn = [f"{k}{v}%" for k, v in snips if k == "跌幅"]
+    # 原文若只寫「漲幅」「跌幅」而沒有「達 xx%」，仍計次數
+    u = max(len(up), (text or "").count("漲幅"))
+    d = max(len(dn), (text or "").count("跌幅"))
+    w = "、".join((up[:1] + dn[:1])) if (up or dn) else ""
+    return {"u": u, "d": d, "w": w}
+
+
+def normalize_notice(row):
+    code = pick(row, ["證券代號", "代號", "Code"])
+    d = parse_date(pick(row, ["公告日期", "日期", "Date"]) or "")
+    text = pick(row, ["注意交易資訊", "TradingInfo", "近期達", "Attention"])
+    if not text:  # 欄位名稱不明時，取最長的字串值
+        vals = [str(v) for v in row.values() if isinstance(v, str)]
+        text = max(vals, key=len) if vals else ""
+    if not code or not d or not text:
+        return None
+    return code, d.isoformat(), summarize_notice(text)
+
+
+def update_attention(att, today, meta):
+    keep_from = (today - timedelta(days=ATT_KEEP_DAYS)).isoformat()
+    att = {c: {d: v for d, v in days.items() if d >= keep_from} for c, days in att.items()}
+    for market, urls in notice_sources(today).items():
+        n, used, errs = 0, [], []
+        for url in urls:
+            try:
+                rows = rows_from(http_json(url))
+                got = 0
+                for row in rows:
+                    q = normalize_notice(row)
+                    if q:
+                        code, d, v = q
+                        cur = att.setdefault(code, {}).get(d)
+                        # 同一天多筆原因：次數取大、摘要保留有內容者
+                        if cur:
+                            v = {"u": max(cur["u"], v["u"]), "d": max(cur["d"], v["d"]),
+                                 "w": cur["w"] if len(cur["w"]) >= len(v["w"]) else v["w"]}
+                        att[code][d] = v
+                        got += 1
+                if got:
+                    used.append(url)
+                    n += got
+                elif rows:
+                    errs.append(f"{url}: 取得 {len(rows)} 列但無法解析")
+            except Exception as e:  # noqa: BLE001
+                errs.append(f"{url}: {type(e).__name__}: {e}")
+        meta[market + "注意"] = {"ok": bool(used), "source": used, "rows": n, "errors": errs}
+        print(f"[{market}注意] {n} 筆 <- {len(used)} 個來源")
+    return att
+
+
+def classify(code, announce, att):
+    """依處置公布日前 ATT_WINDOW 天內的注意紀錄判斷方向：漲／跌／混／空字串（未明）。"""
+    try:
+        a = date.fromisoformat(announce)
+    except ValueError:
+        return "", ""
+    lo = (a - timedelta(days=ATT_WINDOW)).isoformat()
+    u = d = 0
+    why = []
+    for day, v in sorted(att.get(code, {}).items()):
+        if lo <= day <= a.isoformat():
+            u += v["u"]
+            d += v["d"]
+            if v["w"] and v["w"] not in why:
+                why.append(v["w"])
+    if not u and not d:
+        return "", ""
+    return ("混" if u and d else "漲" if u else "跌"), "、".join(why[:3])
+
+
+def apply_direction(records, att):
+    for r in records:
+        if r["kind"] != "股票/ETF":
+            r.setdefault("dir", "")
+            r.setdefault("why", "")
+            continue
+        dr, why = classify(r["code"], r["announce"] or r["start"], att)
+        if dr or "dir" not in r:  # 查不到新資料時保留先前判斷
+            r["dir"], r["why"] = dr, why
+
+
 def main(argv):
     today = datetime.now(TZ).date()
-    old, old_prices = [], {}
+    old, old_prices, old_att = [], {}, {}
     if OUT.exists():
         try:
             prev = json.loads(OUT.read_text(encoding="utf-8"))
             old, old_prices = prev.get("records", []), prev.get("prices", {})
+            old_att = prev.get("attention", {})
         except Exception:  # noqa: BLE001
-            old, old_prices = [], {}
+            old, old_prices, old_att = [], {}, {}
 
     merged, meta, ok_any = {}, {}, False
     cutoff = (today - timedelta(days=KEEP_DAYS)).isoformat()
@@ -333,11 +444,17 @@ def main(argv):
 
     records = sorted(merged.values(), key=lambda r: (r["start"], r["market"], r["code"]))
     prices = update_prices(old_prices, records, today, meta)
+    attention = update_attention(old_att, today, meta)
+    apply_direction(records, attention)
+    cnt = {k: sum(1 for r in records if r.get("dir") == k) for k in ("漲", "跌", "混", "")}
+    meta["方向"] = {"ok": True, "漲": cnt["漲"], "跌": cnt["跌"], "混": cnt["混"], "未明": cnt[""]}
+    print("方向判斷：", meta["方向"])
     out = {
         "updated": datetime.now(TZ).isoformat(timespec="seconds"),
         "meta": meta,
         "records": records,
         "prices": prices,
+        "attention": attention,
     }
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"寫入 {len(records)} 筆處置、{len(prices)} 檔行情到 {OUT.name}")
