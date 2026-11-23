@@ -84,7 +84,7 @@ footer{color:var(--mute);font-size:11px;padding:0 14px 30px}
 </div>
 <div class="legend"><span class="dot t-run">●</span>處置中 <span class="dot t-soon">●</span>即將開始 <span class="dot t-done">●</span>已結束　點一列看每日行情</div>
 <main id="main"></main>
-<footer>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日自動更新；盤中價取自證交所即時行情（盤中約每小時更新，收盤後再更新一次，GitHub 排程可能延遲），官方收盤資料公布後以官方為準；權證、可轉債若查得到也會顯示，漲跌幅 = 漲跌價差 ÷ 前一日收盤；點一列可展開每日開盤、收盤與漲跌幅，歷史從開始記錄日起累積。「方向」依處置公布前 14 天內的注意交易資訊判斷：原因含漲幅為 ▲、含跌幅為 ▼、兩者都有為 ▲▼、都沒寫（如週轉率、本益比）則不標記；預設只排除明確標為 ▼ 的，未標記的仍會顯示，「只看上漲」則只留 ▲。僅供資訊整理，非投資建議。「處置中／即將開始」依你開啟當下的台北日期計算。</footer>
+<footer>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日自動更新；盤中價取自證交所即時行情（盤中約每小時更新，收盤後再更新一次，GitHub 排程可能延遲），官方收盤資料公布後以官方為準；權證、可轉債若查得到也會顯示，漲跌幅 = 漲跌價差 ÷ 前一日收盤；點一列可展開每日開盤、收盤與漲跌幅，歷史從開始記錄日起累積。「方向」依處置公布前 14 天內的注意交易資訊判斷：原因含漲幅為 ▲、含跌幅為 ▼、兩者都有為 ▲▼、都沒寫（如週轉率、本益比）則不標記；沒有原因資料時，改用公布後累計漲跌幅（±5% 以上）推測，標為「估▲／估▼」，僅供參考；預設只排除明確標為 ▼ 的，未標記的仍會顯示，「只看上漲」則只留 ▲。僅供資訊整理，非投資建議。「處置中／即將開始」依你開啟當下的台北日期計算。</footer>
 <script>
 const S={live:null,dir:'excl',status:'run',group:'start',mkt:'all',q:'',other:false,data:null};
 const todayTW=()=>new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Taipei'}));
@@ -96,7 +96,15 @@ const fmt=s=>s?s.slice(5).replace('-','/')+'('+wk[new Date(s+'T00:00:00').getDay
 const status=r=>r.end<T0?'done':(r.start>T0?'soon':'run');
 const lab={run:['處置中','t-run'],soon:['即將開始','t-soon'],done:['已結束','t-done']};
 const cn=n=>String(n??'').replace(/\s*[\(（][^)）]*(?:\.html|https?:|\.\.\/)[^)）]*[\)）]\s*$/,'').trim();
-const dirMark=r=>r.dir==='漲'?' <span class="up dm" title="漲幅異常">▲</span>':r.dir==='跌'?' <span class="dn dm" title="跌幅異常">▼</span>':r.dir==='混'?' <span class="mk dm" title="漲跌皆有">▲▼</span>':'';
+const dirMark=r=>{
+  const sp=(c,t,x)=>' <span class="'+c+' dm" title="'+esc(t)+'">'+x+'</span>';
+  if(r.dir==='漲')return sp('up','漲幅異常','▲');
+  if(r.dir==='跌')return sp('dn','跌幅異常','▼');
+  if(r.dir==='混')return sp('mk','漲跌皆有','▲▼');
+  if(r.est==='漲')return sp('up','價格推測：'+(r.est_why||''),'估▲');
+  if(r.est==='跌')return sp('dn','價格推測：'+(r.est_why||''),'估▼');
+  return '';
+};
 const sd=s=>s?s.slice(5).replace('-','/'):'';
 const fx=v=>v==null?'—':Number(v).toFixed(2);
 const pct=q=>q.p==null?'—':(q.p>0?'+':'')+q.p.toFixed(2)+'%';
@@ -126,8 +134,8 @@ document.getElementById('main').addEventListener('click',e=>{
   const nx=tr.nextElementSibling;
   if(nx&&nx.classList.contains('hist')){nx.remove();return}
   const rec=S.data.records.find(x=>x.market+'|'+x.code+'|'+x.start===tr.dataset.key)||{};
-  const dtxt={'漲':'漲幅異常','跌':'跌幅異常','混':'漲跌幅皆有異常'}[rec.dir]||'未判定（注意資料沒有漲跌幅原因，或尚未累積）';
-  const why='<div class="mk" style="margin-bottom:4px">處置原因方向：'+dtxt+(rec.why?'（'+esc(rec.why)+'）':'')+'</div>';
+  const dtxt=({'漲':'漲幅異常','跌':'跌幅異常','混':'漲跌幅皆有異常'}[rec.dir])||(rec.est?'推測為'+(rec.est==='漲'?'上漲':'下跌')+'（交易所原因資料不足，依價格推測，僅供參考）':'未判定（注意資料沒有漲跌幅原因，或尚未累積）');
+  const why='<div class="mk" style="margin-bottom:4px">處置原因方向：'+dtxt+((rec.why||rec.est_why)?'（'+esc(rec.why||rec.est_why)+'）':'')+'</div>';
   const h=hist(tr.dataset.code).reverse().slice(0,15);
   const n=[...tr.children].filter(c=>c.offsetParent!==null).length;
   const body=h.length?'<table><thead><tr><th>日期</th><th class="num">開盤</th><th class="num">收盤</th><th class="num">漲跌幅</th></tr></thead><tbody>'+
@@ -142,7 +150,7 @@ function render(){
   let rows=d.records.filter(r=>
     (S.other||r.kind==='股票/ETF')&&
     (S.mkt==='all'||r.market===S.mkt)&&
-    (S.dir==='all'||(S.dir==='excl'?r.dir!=='跌':r.dir==='漲'))&&
+    (S.dir==='all'||(S.dir==='excl'?(r.dir!=='跌'&&!(r.dir===''&&r.est==='跌')):(r.dir==='漲'||(r.dir===''&&r.est==='漲'))))&&
     (S.status==='all'||status(r)===S.status)&&
     (!S.q||(r.code+cn(r.name)).toLowerCase().includes(S.q)));
   const key=S.group;
