@@ -78,9 +78,9 @@ footer{color:var(--mute);font-size:11px;padding:0 14px 30px}
 </div>
 <div class="legend"><span class="dot t-run">●</span>處置中 <span class="dot t-soon">●</span>即將開始 <span class="dot t-done">●</span>已結束　點一列看每日行情</div>
 <main id="main"></main>
-<footer>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日自動更新；行情取自證交所、櫃買每日收盤資料（權證、可轉債無行情），漲跌幅 = 漲跌價差 ÷ 前一日收盤；點一列可展開每日開盤、收盤與漲跌幅，歷史從開始記錄日起累積。僅供資訊整理，非投資建議。「處置中／即將開始」依你開啟當下的台北日期計算。</footer>
+<footer>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日自動更新；盤中價取自證交所即時行情（盤中約每小時更新，收盤後再更新一次，GitHub 排程可能延遲），官方收盤資料公布後以官方為準；權證、可轉債若查得到也會顯示，漲跌幅 = 漲跌價差 ÷ 前一日收盤；點一列可展開每日開盤、收盤與漲跌幅，歷史從開始記錄日起累積。僅供資訊整理，非投資建議。「處置中／即將開始」依你開啟當下的台北日期計算。</footer>
 <script>
-const S={status:'run',group:'start',mkt:'all',q:'',other:false,data:null};
+const S={live:null,status:'run',group:'start',mkt:'all',q:'',other:false,data:null};
 const todayTW=()=>new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Taipei'}));
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const T0=iso(todayTW());
@@ -93,7 +93,13 @@ const cn=n=>String(n??'').replace(/\s*[\(（][^)）]*(?:\.html|https?:|\.\.\/)[^
 const sd=s=>s?s.slice(5).replace('-','/'):'';
 const fx=v=>v==null?'—':Number(v).toFixed(2);
 const pct=q=>q.p==null?'—':(q.p>0?'+':'')+q.p.toFixed(2)+'%';
-const hist=code=>{const h=(S.data.prices||{})[code]||{};return Object.keys(h).sort().map(d=>({d,...h[d]}))};
+const hist=code=>{
+  const h=(S.data.prices||{})[code]||{};
+  const a=Object.keys(h).sort().map(d=>({d,...h[d]}));
+  // 即時價只在比官方行情更新的日期才採用；官方資料追上後以官方為準
+  const lv=S.live&&S.live.quotes&&S.live.quotes[code];
+  if(lv&&lv.z!=null&&(!a.length||lv.d>a[a.length-1].d))a.push({d:lv.d,o:lv.o,c:lv.z,p:lv.p,chg:lv.chg,live:true,t:lv.t});
+  return a};
 const latest=code=>{const h=hist(code);return h.length?h[h.length-1]:null};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -115,8 +121,8 @@ document.getElementById('main').addEventListener('click',e=>{
   const h=hist(tr.dataset.code).reverse().slice(0,15);
   const n=[...tr.children].filter(c=>c.offsetParent!==null).length;
   const body=h.length?'<table><thead><tr><th>日期</th><th class="num">開盤</th><th class="num">收盤</th><th class="num">漲跌幅</th></tr></thead><tbody>'+
-    h.map(q=>{const c=q.p>0?'up':q.p<0?'dn':'';return `<tr><td>${sd(q.d)}</td><td class="num">${fx(q.o)}</td><td class="num ${c}">${fx(q.c)}</td><td class="num ${c}">${pct(q)}</td></tr>`}).join('')+'</tbody></table>'
-    :'<span class="mk">尚無行情資料（權證、可轉債不提供，或尚未累積）</span>';
+    h.map(q=>{const c=q.p>0?'up':q.p<0?'dn':'';return `<tr><td>${sd(q.d)}${q.live?' <span class="pd">即時</span>':''}</td><td class="num">${fx(q.o)}</td><td class="num ${c}">${fx(q.c)}</td><td class="num ${c}">${pct(q)}</td></tr>`}).join('')+'</tbody></table>'
+    :'<span class="mk">尚無行情資料（可轉債通常沒有，或尚未累積）</span>';
   const t=document.createElement('tr');t.className='hist';t.innerHTML=`<td colspan="${n}">${body}</td>`;tr.after(t);
 });
 inclOther.addEventListener('change',e=>{S.other=e.target.checked;render()});
@@ -153,15 +159,29 @@ function render(){
     `</tbody></table></div></section>`}).join('');
 }
 
-fetch('data.json?'+Date.now()).then(r=>r.json()).then(d=>{
-  S.data=d;
+async function loadLive(){
+  try{const r=await fetch('live.json?'+Date.now());S.live=r.ok?await r.json():null}catch(e){S.live=null}
+}
+function liveStamp(){
+  const q=S.live&&S.live.quotes?Object.values(S.live.quotes):[];
+  if(!q.length)return '';
+  const m=q.map(x=>x.d+' '+x.t).sort().pop();
+  return '｜即時 '+sd(m.slice(0,10))+' '+m.slice(11,16);
+}
+setInterval(async()=>{ // 開著頁面時每分鐘更新即時價（展開明細時不重繪）
+  if(!S.data||document.querySelector('tr.hist'))return;
+  await loadLive();render();
+  const el=document.getElementById('upd');el.textContent=el.textContent.replace(/｜即時 .*$/,'')+liveStamp();
+},60000);
+fetch('data.json?'+Date.now()).then(r=>r.json()).then(async d=>{
+  S.data=d;await loadLive();
   const u=new Date(d.updated);
   const pds=Object.values(d.prices||{}).flatMap(v=>Object.keys(v)).sort();
-  const pd=pds.length?'｜行情日 '+sd(pds[pds.length-1]):'';
-  document.getElementById('upd').textContent='資料更新：'+u.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+'（共 '+d.records.length+' 筆）'+pd;
+  const pd=pds.length?'｜官方行情日 '+sd(pds[pds.length-1]):'';
+  document.getElementById('upd').textContent='資料更新：'+u.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+'（共 '+d.records.length+' 筆）'+pd+liveStamp();
   const bad=Object.entries(d.meta||{}).filter(([k,v])=>!v.ok&&!k.endsWith('行情')).map(([k])=>k);
   const badq=Object.entries(d.meta||{}).filter(([k,v])=>!v.ok&&k.endsWith('行情')).map(([k])=>k);
-  const msg=[];if(bad.length)msg.push(bad.join('、')+' 處置資料最近一次抓取失敗，顯示的是舊資料。');if(badq.length)msg.push(badq.join('、')+' 最近一次抓取失敗，價格可能不是最新。');
+  const msg=[];if(bad.length)msg.push(bad.join('、')+' 處置資料最近一次抓取失敗，顯示的是舊資料。');if(badq.length)msg.push(badq.join('、')+' 最近一次抓取失敗，價格可能不是最新。');if(S.live&&S.live.error)msg.push('即時行情最近一次抓取失敗，改顯示官方收盤資料。');
   if(msg.length){const w=document.getElementById('warn');w.style.display='block';w.textContent='⚠ '+msg.join(' ')}
   render();
 }).catch(e=>{document.getElementById('upd').textContent='讀取 data.json 失敗：'+e});
