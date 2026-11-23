@@ -1,0 +1,42 @@
+name: live-quotes
+
+on:
+  schedule:
+    # 台北時間 平日 09:00、10:00、11:00、12:00、13:00 每小時一次（UTC 01–05 點）
+    # 另加 13:35 一次，抓收盤最終價（不需要可刪掉下面那行）
+    # GitHub 的排程是盡力而為，常會延遲幾分鐘
+    - cron: "0 1-5 * * 1-5"
+    - cron: "35 5 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-quotes
+  cancel-in-progress: true
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch live quotes
+        run: python fetch_live.py
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add live.json
+          if git diff --cached --quiet; then
+            echo "no change"
+          else
+            git commit -m "update live quotes"
+            for i in 1 2 3; do
+              git pull --rebase && git push && break
+              sleep 5
+            done
+          fi
