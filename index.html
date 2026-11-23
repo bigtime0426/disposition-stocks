@@ -96,13 +96,24 @@ const fmt=s=>s?s.slice(5).replace('-','/')+'('+wk[new Date(s+'T00:00:00').getDay
 const status=r=>r.end<T0?'done':(r.start>T0?'soon':'run');
 const lab={run:['處置中','t-run'],soon:['即將開始','t-soon'],done:['已結束','t-done']};
 const cn=n=>String(n??'').replace(/\s*[\(（][^)）]*(?:\.html|https?:|\.\.\/)[^)）]*[\)）]\s*$/,'').trim();
+const EST=5; // 公布日起累計漲跌幅達 ±5% 才推測方向
+const estOf=r=>{
+  if(r.dir||r.kind!=='股票/ETF')return {d:'',w:''};
+  const a=r.announce||r.start;
+  const xs=hist(r.code).filter(q=>q.d>=a&&q.p!=null);
+  if(!xs.length)return {d:'',w:''};
+  const t=Math.round(xs.reduce((m,q)=>m+q.p,0)*100)/100;
+  const w='公布後'+xs.length+'日累計'+(t>0?'+':'')+t.toFixed(2)+'%';
+  return t>=EST?{d:'漲',w}:t<=-EST?{d:'跌',w}:{d:'',w:''};
+};
 const dirMark=r=>{
   const sp=(c,t,x)=>' <span class="'+c+' dm" title="'+esc(t)+'">'+x+'</span>';
   if(r.dir==='漲')return sp('up','漲幅異常','▲');
   if(r.dir==='跌')return sp('dn','跌幅異常','▼');
   if(r.dir==='混')return sp('mk','漲跌皆有','▲▼');
-  if(r.est==='漲')return sp('up','價格推測：'+(r.est_why||''),'估▲');
-  if(r.est==='跌')return sp('dn','價格推測：'+(r.est_why||''),'估▼');
+  const e=estOf(r);
+  if(e.d==='漲')return sp('up','價格推測：'+e.w,'估▲');
+  if(e.d==='跌')return sp('dn','價格推測：'+e.w,'估▼');
   return '';
 };
 const sd=s=>s?s.slice(5).replace('-','/'):'';
@@ -134,8 +145,8 @@ document.getElementById('main').addEventListener('click',e=>{
   const nx=tr.nextElementSibling;
   if(nx&&nx.classList.contains('hist')){nx.remove();return}
   const rec=S.data.records.find(x=>x.market+'|'+x.code+'|'+x.start===tr.dataset.key)||{};
-  const dtxt=({'漲':'漲幅異常','跌':'跌幅異常','混':'漲跌幅皆有異常'}[rec.dir])||(rec.est?'推測為'+(rec.est==='漲'?'上漲':'下跌')+'（交易所原因資料不足，依價格推測，僅供參考）':'未判定（注意資料沒有漲跌幅原因，或尚未累積）');
-  const why='<div class="mk" style="margin-bottom:4px">處置原因方向：'+dtxt+((rec.why||rec.est_why)?'（'+esc(rec.why||rec.est_why)+'）':'')+'</div>';
+  const dtxt=({'漲':'漲幅異常','跌':'跌幅異常','混':'漲跌幅皆有異常'}[rec.dir])||(estOf(rec).d?'推測為'+(estOf(rec).d==='漲'?'上漲':'下跌')+'（交易所原因資料不足，依價格推測，僅供參考）':'未判定（注意資料沒有漲跌幅原因，或價格變動未達 ±5%）');
+  const why='<div class="mk" style="margin-bottom:4px">處置原因方向：'+dtxt+((rec.why||estOf(rec).w)?'（'+esc(rec.why||estOf(rec).w)+'）':'')+'</div>';
   const h=hist(tr.dataset.code).reverse().slice(0,15);
   const n=[...tr.children].filter(c=>c.offsetParent!==null).length;
   const body=h.length?'<table><thead><tr><th>日期</th><th class="num">開盤</th><th class="num">收盤</th><th class="num">漲跌幅</th></tr></thead><tbody>'+
@@ -150,7 +161,7 @@ function render(){
   let rows=d.records.filter(r=>
     (S.other||r.kind==='股票/ETF')&&
     (S.mkt==='all'||r.market===S.mkt)&&
-    (S.dir==='all'||(S.dir==='excl'?(r.dir!=='跌'&&!(r.dir===''&&r.est==='跌')):(r.dir==='漲'||(r.dir===''&&r.est==='漲'))))&&
+    (S.dir==='all'||(S.dir==='excl'?(r.dir!=='跌'&&estOf(r).d!=='跌'):(r.dir==='漲'||estOf(r).d==='漲')))&&
     (S.status==='all'||status(r)===S.status)&&
     (!S.q||(r.code+cn(r.name)).toLowerCase().includes(S.q)));
   const key=S.group;
