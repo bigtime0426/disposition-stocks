@@ -45,6 +45,7 @@ tr.row:active{background:rgba(127,127,127,.08)}
 tr.hist td{background:rgba(127,127,127,.06);white-space:normal;padding:6px 10px 10px}
 .hist table{min-width:0;width:auto}
 .hist th,.hist td{padding:3px 12px 3px 0;border:0;background:none}
+.dm{font-size:10px;white-space:nowrap}
 .pd{color:var(--mute);font-weight:400;font-size:11px}
 .empty{color:var(--mute);padding:30px 0;text-align:center}
 footer{color:var(--mute);font-size:11px;padding:0 14px 30px}
@@ -72,15 +73,20 @@ footer{color:var(--mute);font-size:11px;padding:0 14px 30px}
     <button data-v="上市">上市</button>
     <button data-v="上櫃">上櫃</button>
   </div>
+  <div class="seg" id="segDir" title="依注意交易資訊的原因判斷">
+    <button data-v="excl" class="on">排除下跌</button>
+    <button data-v="up">只看上漲</button>
+    <button data-v="all">不分方向</button>
+  </div>
   <input type="search" id="q" placeholder="搜尋代號或名稱">
   <label class="chk"><input type="checkbox" id="inclOther"> 含權證／可轉債</label>
   <label class="chk"><input type="checkbox" id="more"> 顯示更多欄位</label>
 </div>
 <div class="legend"><span class="dot t-run">●</span>處置中 <span class="dot t-soon">●</span>即將開始 <span class="dot t-done">●</span>已結束　點一列看每日行情</div>
 <main id="main"></main>
-<footer>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日自動更新；盤中價取自證交所即時行情（盤中約每小時更新，收盤後再更新一次，GitHub 排程可能延遲），官方收盤資料公布後以官方為準；權證、可轉債若查得到也會顯示，漲跌幅 = 漲跌價差 ÷ 前一日收盤；點一列可展開每日開盤、收盤與漲跌幅，歷史從開始記錄日起累積。僅供資訊整理，非投資建議。「處置中／即將開始」依你開啟當下的台北日期計算。</footer>
+<footer>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日自動更新；盤中價取自證交所即時行情（盤中約每小時更新，收盤後再更新一次，GitHub 排程可能延遲），官方收盤資料公布後以官方為準；權證、可轉債若查得到也會顯示，漲跌幅 = 漲跌價差 ÷ 前一日收盤；點一列可展開每日開盤、收盤與漲跌幅，歷史從開始記錄日起累積。「方向」依處置公布前 14 天內的注意交易資訊判斷：原因含漲幅為 ▲、含跌幅為 ▼、兩者都有為 ▲▼、都沒寫（如週轉率、本益比）則不標記；預設只排除明確標為 ▼ 的，未標記的仍會顯示，「只看上漲」則只留 ▲。僅供資訊整理，非投資建議。「處置中／即將開始」依你開啟當下的台北日期計算。</footer>
 <script>
-const S={live:null,status:'run',group:'start',mkt:'all',q:'',other:false,data:null};
+const S={live:null,dir:'excl',status:'run',group:'start',mkt:'all',q:'',other:false,data:null};
 const todayTW=()=>new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Taipei'}));
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const T0=iso(todayTW());
@@ -90,6 +96,7 @@ const fmt=s=>s?s.slice(5).replace('-','/')+'('+wk[new Date(s+'T00:00:00').getDay
 const status=r=>r.end<T0?'done':(r.start>T0?'soon':'run');
 const lab={run:['處置中','t-run'],soon:['即將開始','t-soon'],done:['已結束','t-done']};
 const cn=n=>String(n??'').replace(/\s*[\(（][^)）]*(?:\.html|https?:|\.\.\/)[^)）]*[\)）]\s*$/,'').trim();
+const dirMark=r=>r.dir==='漲'?' <span class="up dm" title="漲幅異常">▲</span>':r.dir==='跌'?' <span class="dn dm" title="跌幅異常">▼</span>':r.dir==='混'?' <span class="mk dm" title="漲跌皆有">▲▼</span>':'';
 const sd=s=>s?s.slice(5).replace('-','/'):'';
 const fx=v=>v==null?'—':Number(v).toFixed(2);
 const pct=q=>q.p==null?'—':(q.p>0?'+':'')+q.p.toFixed(2)+'%';
@@ -111,19 +118,22 @@ function seg(id,key){
     render();
   });
 }
-seg('segStatus','status');seg('segGroup','group');seg('segMkt','mkt');
+seg('segStatus','status');seg('segDir','dir');seg('segGroup','group');seg('segMkt','mkt');
 q.addEventListener('input',e=>{S.q=e.target.value.trim().toLowerCase();render()});
 more.addEventListener('change',e=>{document.body.classList.toggle('more',e.target.checked);render()});
 document.getElementById('main').addEventListener('click',e=>{
   const tr=e.target.closest('tr.row');if(!tr)return;
   const nx=tr.nextElementSibling;
   if(nx&&nx.classList.contains('hist')){nx.remove();return}
+  const rec=S.data.records.find(x=>x.market+'|'+x.code+'|'+x.start===tr.dataset.key)||{};
+  const dtxt={'漲':'漲幅異常','跌':'跌幅異常','混':'漲跌幅皆有異常'}[rec.dir]||'未判定（注意資料沒有漲跌幅原因，或尚未累積）';
+  const why='<div class="mk" style="margin-bottom:4px">處置原因方向：'+dtxt+(rec.why?'（'+esc(rec.why)+'）':'')+'</div>';
   const h=hist(tr.dataset.code).reverse().slice(0,15);
   const n=[...tr.children].filter(c=>c.offsetParent!==null).length;
   const body=h.length?'<table><thead><tr><th>日期</th><th class="num">開盤</th><th class="num">收盤</th><th class="num">漲跌幅</th></tr></thead><tbody>'+
     h.map(q=>{const c=q.p>0?'up':q.p<0?'dn':'';return `<tr><td>${sd(q.d)}${q.live?' <span class="pd">即時</span>':''}</td><td class="num">${fx(q.o)}</td><td class="num ${c}">${fx(q.c)}</td><td class="num ${c}">${pct(q)}</td></tr>`}).join('')+'</tbody></table>'
     :'<span class="mk">尚無行情資料（可轉債通常沒有，或尚未累積）</span>';
-  const t=document.createElement('tr');t.className='hist';t.innerHTML=`<td colspan="${n}">${body}</td>`;tr.after(t);
+  const t=document.createElement('tr');t.className='hist';t.innerHTML=`<td colspan="${n}">${why}${body}</td>`;tr.after(t);
 });
 inclOther.addEventListener('change',e=>{S.other=e.target.checked;render()});
 
@@ -132,6 +142,7 @@ function render(){
   let rows=d.records.filter(r=>
     (S.other||r.kind==='股票/ETF')&&
     (S.mkt==='all'||r.market===S.mkt)&&
+    (S.dir==='all'||(S.dir==='excl'?r.dir!=='跌':r.dir==='漲'))&&
     (S.status==='all'||status(r)===S.status)&&
     (!S.q||(r.code+cn(r.name)).toLowerCase().includes(S.q)));
   const key=S.group;
@@ -155,7 +166,7 @@ function render(){
       const pr=latest(r.code);
       const cls=pr&&pr.p!=null?(pr.p>0?'up':pr.p<0?'dn':''):'';
       const px=pr?[fx(pr.c),pct(pr),fx(pr.o)]:['—','—','—'];
-      return `<tr class="row" data-code="${esc(r.code)}"><td class="code"><span class="dot ${c}" title="${l}">●</span>${esc(r.code)}</td><td class="nm">${esc(cn(r.name))}</td><td class="num ${cls}">${px[0]}</td><td class="num ${cls}">${px[1]}</td><td class="num">${px[2]}</td><td>${sd(r.start)}~${sd(r.end)}</td><td>${left}</td><td class="mk x">${esc(r.market)}</td><td class="x">${esc(r.count)}</td><td class="x">${esc(r.measure)}</td><td class="x">${esc(r.interval)}</td><td class="x">${esc(r.condition)}</td></tr>`}).join('')+
+      return `<tr class="row" data-code="${esc(r.code)}" data-key="${esc(r.market+'|'+r.code+'|'+r.start)}"><td class="code"><span class="dot ${c}" title="${l}">●</span>${esc(r.code)}</td><td class="nm">${esc(cn(r.name))}${dirMark(r)}</td><td class="num ${cls}">${px[0]}</td><td class="num ${cls}">${px[1]}</td><td class="num">${px[2]}</td><td>${sd(r.start)}~${sd(r.end)}</td><td>${left}</td><td class="mk x">${esc(r.market)}</td><td class="x">${esc(r.count)}</td><td class="x">${esc(r.measure)}</td><td class="x">${esc(r.interval)}</td><td class="x">${esc(r.condition)}</td></tr>`}).join('')+
     `</tbody></table></div></section>`}).join('');
 }
 
@@ -179,9 +190,11 @@ fetch('data.json?'+Date.now()).then(r=>r.json()).then(async d=>{
   const pds=Object.values(d.prices||{}).flatMap(v=>Object.keys(v)).sort();
   const pd=pds.length?'｜官方行情日 '+sd(pds[pds.length-1]):'';
   document.getElementById('upd').textContent='資料更新：'+u.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+'（共 '+d.records.length+' 筆）'+pd+liveStamp();
-  const bad=Object.entries(d.meta||{}).filter(([k,v])=>!v.ok&&!k.endsWith('行情')).map(([k])=>k);
+  const bad=Object.entries(d.meta||{}).filter(([k,v])=>!v.ok&&!k.endsWith('行情')&&!k.endsWith('注意')&&k!=='方向').map(([k])=>k);
   const badq=Object.entries(d.meta||{}).filter(([k,v])=>!v.ok&&k.endsWith('行情')).map(([k])=>k);
-  const msg=[];if(bad.length)msg.push(bad.join('、')+' 處置資料最近一次抓取失敗，顯示的是舊資料。');if(badq.length)msg.push(badq.join('、')+' 最近一次抓取失敗，價格可能不是最新。');if(S.live&&S.live.error)msg.push('即時行情最近一次抓取失敗，改顯示官方收盤資料。');
+  const msg=[];if(bad.length)msg.push(bad.join('、')+' 處置資料最近一次抓取失敗，顯示的是舊資料。');if(badq.length)msg.push(badq.join('、')+' 最近一次抓取失敗，價格可能不是最新。');const badn=Object.entries(d.meta||{}).filter(([k,v])=>!v.ok&&k.endsWith('注意')).map(([k])=>k);
+  if(badn.length)msg.push(badn.join('、')+' 抓取失敗，漲跌方向可能不完整。');
+  if(S.live&&S.live.error)msg.push('即時行情最近一次抓取失敗，改顯示官方收盤資料。');
   if(msg.length){const w=document.getElementById('warn');w.style.display='block';w.textContent='⚠ '+msg.join(' ')}
   render();
 }).catch(e=>{document.getElementById('upd').textContent='讀取 data.json 失敗：'+e});
