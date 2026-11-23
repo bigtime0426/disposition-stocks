@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>處置股一覽</title>
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--tx:#1d2330;--mute:#6b7280;--line:#e5e7eb;--acc:#2563eb;--run:#dc2626;--soon:#d97706;--done:#6b7280}
-@media(prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1b1f27;--tx:#e8eaf0;--mute:#9aa3b2;--line:#2a303b;--acc:#6ea0ff;--run:#ff6b6b;--soon:#f0b34a;--done:#9aa3b2}}
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1d2330;--mute:#6b7280;--line:#e5e7eb;--acc:#2563eb;--run:#7c3aed;--up:#dc2626;--dn:#16a34a;--soon:#d97706;--done:#6b7280}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1b1f27;--tx:#e8eaf0;--mute:#9aa3b2;--line:#2a303b;--acc:#6ea0ff;--run:#b794ff;--up:#ff6b6b;--dn:#4ade80;--soon:#f0b34a;--done:#9aa3b2}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 -apple-system,"PingFang TC","Noto Sans TC",sans-serif}
 header{padding:14px 14px 6px}
@@ -28,13 +28,24 @@ table{border-collapse:collapse;width:100%}
 .x{display:none}
 body.more .x{display:table-cell}
 body.more table{min-width:760px}
-th,td{padding:7px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
+th,td{padding:7px 6px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{padding-left:10px}
+.nm{white-space:normal;min-width:64px}
+.dot{font-size:9px;margin-right:4px;vertical-align:middle}
+.legend{color:var(--mute);font-size:11px;padding:0 14px}
 th{font-size:12px;color:var(--mute);font-weight:600;background:var(--card)}
 tr:last-child td{border-bottom:0}
 .code{font-variant-numeric:tabular-nums;font-weight:600}
 .tag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;border:1px solid currentColor}
 .t-run{color:var(--run)}.t-soon{color:var(--soon)}.t-done{color:var(--done)}
 .mk{color:var(--mute);font-size:12px}
+.up{color:var(--up)}.dn{color:var(--dn)}.num{font-variant-numeric:tabular-nums;text-align:right}
+tr.row{cursor:pointer}
+tr.row:active{background:rgba(127,127,127,.08)}
+tr.hist td{background:rgba(127,127,127,.06);white-space:normal;padding:6px 10px 10px}
+.hist table{min-width:0;width:auto}
+.hist th,.hist td{padding:3px 12px 3px 0;border:0;background:none}
+.pd{color:var(--mute);font-weight:400;font-size:11px}
 .empty{color:var(--mute);padding:30px 0;text-align:center}
 footer{color:var(--mute);font-size:11px;padding:0 14px 30px}
 </style>
@@ -65,8 +76,9 @@ footer{color:var(--mute);font-size:11px;padding:0 14px 30px}
   <label class="chk"><input type="checkbox" id="inclOther"> 含權證／可轉債</label>
   <label class="chk"><input type="checkbox" id="more"> 顯示更多欄位</label>
 </div>
+<div class="legend"><span class="dot t-run">●</span>處置中 <span class="dot t-soon">●</span>即將開始 <span class="dot t-done">●</span>已結束　點一列看每日行情</div>
 <main id="main"></main>
-<footer>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日自動更新；僅供資訊整理，非投資建議。「處置中／即將開始」依你開啟當下的台北日期計算。</footer>
+<footer>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日自動更新；行情取自證交所、櫃買每日收盤資料（權證、可轉債無行情），漲跌幅 = 漲跌價差 ÷ 前一日收盤；點一列可展開每日開盤、收盤與漲跌幅，歷史從開始記錄日起累積。僅供資訊整理，非投資建議。「處置中／即將開始」依你開啟當下的台北日期計算。</footer>
 <script>
 const S={status:'run',group:'start',mkt:'all',q:'',other:false,data:null};
 const todayTW=()=>new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Taipei'}));
@@ -77,6 +89,11 @@ const wk='日一二三四五六';
 const fmt=s=>s?s.slice(5).replace('-','/')+'('+wk[new Date(s+'T00:00:00').getDay()]+')':'';
 const status=r=>r.end<T0?'done':(r.start>T0?'soon':'run');
 const lab={run:['處置中','t-run'],soon:['即將開始','t-soon'],done:['已結束','t-done']};
+const sd=s=>s?s.slice(5).replace('-','/'):'';
+const fx=v=>v==null?'—':Number(v).toFixed(2);
+const pct=q=>q.p==null?'—':(q.p>0?'+':'')+q.p.toFixed(2)+'%';
+const hist=code=>{const h=(S.data.prices||{})[code]||{};return Object.keys(h).sort().map(d=>({d,...h[d]}))};
+const latest=code=>{const h=hist(code);return h.length?h[h.length-1]:null};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function seg(id,key){
@@ -89,7 +106,18 @@ function seg(id,key){
 }
 seg('segStatus','status');seg('segGroup','group');seg('segMkt','mkt');
 q.addEventListener('input',e=>{S.q=e.target.value.trim().toLowerCase();render()});
-more.addEventListener('change',e=>document.body.classList.toggle('more',e.target.checked));
+more.addEventListener('change',e=>{document.body.classList.toggle('more',e.target.checked);render()});
+document.getElementById('main').addEventListener('click',e=>{
+  const tr=e.target.closest('tr.row');if(!tr)return;
+  const nx=tr.nextElementSibling;
+  if(nx&&nx.classList.contains('hist')){nx.remove();return}
+  const h=hist(tr.dataset.code).reverse().slice(0,15);
+  const n=[...tr.children].filter(c=>c.offsetParent!==null).length;
+  const body=h.length?'<table><thead><tr><th>日期</th><th class="num">開盤</th><th class="num">收盤</th><th class="num">漲跌幅</th></tr></thead><tbody>'+
+    h.map(q=>{const c=q.p>0?'up':q.p<0?'dn':'';return `<tr><td>${sd(q.d)}</td><td class="num">${fx(q.o)}</td><td class="num ${c}">${fx(q.c)}</td><td class="num ${c}">${pct(q)}</td></tr>`}).join('')+'</tbody></table>'
+    :'<span class="mk">尚無行情資料（權證、可轉債不提供，或尚未累積）</span>';
+  const t=document.createElement('tr');t.className='hist';t.innerHTML=`<td colspan="${n}">${body}</td>`;tr.after(t);
+});
 inclOther.addEventListener('change',e=>{S.other=e.target.checked;render()});
 
 function render(){
@@ -114,19 +142,26 @@ function render(){
     const n=dayDiff(T0,k);
     rel=n===0?'今天':(n>0?n+' 天後':-n+' 天前');
     return `<section class="grp"><h2>${fmt(k)} ${head}<small>${rel}・${g.length} 檔</small></h2>
-    <div class="wrap"><table><thead><tr><th>狀態</th><th>代號</th><th>名稱</th><th class="x">市場</th><th>開始</th><th>結束</th><th>剩餘</th><th class="x">累計</th><th class="x">措施</th><th class="x">撮合</th><th class="x">條件</th></tr></thead><tbody>`+
+    <div class="wrap"><table><thead><tr><th>代號</th><th>名稱</th><th class="num">收盤</th><th class="num">漲跌幅</th><th class="num">開盤</th><th>處置期間</th><th>剩餘</th><th class="x">市場</th><th class="x">累計</th><th class="x">措施</th><th class="x">撮合</th><th class="x">條件</th></tr></thead><tbody>`+
     g.map(r=>{const s=status(r),[l,c]=lab[s];
       const left=s==='run'?(dayDiff(T0,r.end)+1)+' 日':(s==='soon'?'—':'');
-      return `<tr><td><span class="tag ${c}">${l}</span></td><td class="code">${esc(r.code)}</td><td>${esc(r.name)}</td><td class="mk x">${esc(r.market)}</td><td>${fmt(r.start)}</td><td>${fmt(r.end)}</td><td>${left}</td><td class="x">${esc(r.count)}</td><td class="x">${esc(r.measure)}</td><td class="x">${esc(r.interval)}</td><td class="x">${esc(r.condition)}</td></tr>`}).join('')+
+      const pr=latest(r.code);
+      const cls=pr&&pr.p!=null?(pr.p>0?'up':pr.p<0?'dn':''):'';
+      const px=pr?[fx(pr.c),pct(pr),fx(pr.o)]:['—','—','—'];
+      return `<tr class="row" data-code="${esc(r.code)}"><td class="code"><span class="dot ${c}" title="${l}">●</span>${esc(r.code)}</td><td class="nm">${esc(r.name)}</td><td class="num ${cls}">${px[0]}</td><td class="num ${cls}">${px[1]}</td><td class="num">${px[2]}</td><td>${sd(r.start)}~${sd(r.end)}</td><td>${left}</td><td class="mk x">${esc(r.market)}</td><td class="x">${esc(r.count)}</td><td class="x">${esc(r.measure)}</td><td class="x">${esc(r.interval)}</td><td class="x">${esc(r.condition)}</td></tr>`}).join('')+
     `</tbody></table></div></section>`}).join('');
 }
 
 fetch('data.json?'+Date.now()).then(r=>r.json()).then(d=>{
   S.data=d;
   const u=new Date(d.updated);
-  document.getElementById('upd').textContent='資料更新：'+u.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+'（共 '+d.records.length+' 筆）';
-  const bad=Object.entries(d.meta||{}).filter(([,v])=>!v.ok).map(([k])=>k);
-  if(bad.length){const w=document.getElementById('warn');w.style.display='block';w.textContent='⚠ '+bad.join('、')+' 最近一次抓取失敗，該市場顯示的是舊資料。'}
+  const pds=Object.values(d.prices||{}).flatMap(v=>Object.keys(v)).sort();
+  const pd=pds.length?'｜行情日 '+sd(pds[pds.length-1]):'';
+  document.getElementById('upd').textContent='資料更新：'+u.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+'（共 '+d.records.length+' 筆）'+pd;
+  const bad=Object.entries(d.meta||{}).filter(([k,v])=>!v.ok&&!k.endsWith('行情')).map(([k])=>k);
+  const badq=Object.entries(d.meta||{}).filter(([k,v])=>!v.ok&&k.endsWith('行情')).map(([k])=>k);
+  const msg=[];if(bad.length)msg.push(bad.join('、')+' 處置資料最近一次抓取失敗，顯示的是舊資料。');if(badq.length)msg.push(badq.join('、')+' 最近一次抓取失敗，價格可能不是最新。');
+  if(msg.length){const w=document.getElementById('warn');w.style.display='block';w.textContent='⚠ '+msg.join(' ')}
   render();
 }).catch(e=>{document.getElementById('upd').textContent='讀取 data.json 失敗：'+e});
 </script>
