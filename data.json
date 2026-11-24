@@ -1,10 +1,10 @@
 {
- "updated": "2026-11-24T18:18:09+08:00",
+ "updated": "2026-11-25T04:45:58+08:00",
  "meta": {
   "上市": {
    "ok": true,
    "source": [
-    "https://www.twse.com.tw/rwd/zh/announcement/punish?startDate=20261010&endDate=20261124&response=json",
+    "https://www.twse.com.tw/rwd/zh/announcement/punish?startDate=20261011&endDate=20261125&response=json",
     "https://openapi.twse.com.tw/v1/announcement/punish",
     "https://www.twse.com.tw/rwd/zh/announcement/punish?response=json"
    ],
@@ -37,9 +37,9 @@
   "上市注意": {
    "ok": true,
    "source": [
-    "https://www.twse.com.tw/rwd/zh/announcement/notice?startDate=20261104&endDate=20261124&response=json"
+    "https://www.twse.com.tw/rwd/zh/announcement/notice?startDate=20261105&endDate=20261125&response=json"
    ],
-   "rows": 379,
+   "rows": 352,
    "errors": [
     "https://openapi.twse.com.tw/v1/announcement/notice: 取得 1 列但無法解析"
    ]
@@ -50,7 +50,7 @@
     "https://www.tpex.org.tw/openapi/v1/tpex_trading_warning_information",
     "https://www.tpex.org.tw/www/zh-tw/bulletin/attention?response=json"
    ],
-   "rows": 106,
+   "rows": 71,
    "errors": []
   },
   "方向": {
@@ -820,9 +820,9 @@
    "announce": "2026-11-17",
    "start": "2026-11-18",
    "end": "2026-11-24",
-   "count": "5",
+   "count": "",
    "condition": "連續3個營業日",
-   "measure": "再次處置",
+   "measure": "",
    "interval": "2分鐘",
    "dir": "",
    "why": "",
@@ -837,9 +837,9 @@
    "announce": "2026-11-17",
    "start": "2026-11-18",
    "end": "2026-11-24",
-   "count": "5",
+   "count": "",
    "condition": "連續3個營業日",
-   "measure": "第一次處置",
+   "measure": "",
    "interval": "2分鐘",
    "dir": "",
    "why": "",
@@ -854,7 +854,7 @@
    "announce": "2026-11-17",
    "start": "2026-11-18",
    "end": "2026-11-26",
-   "count": "5",
+   "count": "1",
    "condition": "連續3個營業日及沖銷標準",
    "measure": "第一次處置",
    "interval": "2分鐘",
@@ -871,9 +871,9 @@
    "announce": "2026-11-17",
    "start": "2026-11-18",
    "end": "2026-11-24",
-   "count": "5",
+   "count": "",
    "condition": "連續3個營業日",
-   "measure": "第一次處置",
+   "measure": "",
    "interval": "2分鐘",
    "dir": "",
    "why": "",
@@ -888,9 +888,9 @@
    "announce": "2026-11-17",
    "start": "2026-11-18",
    "end": "2026-11-24",
-   "count": "5",
+   "count": "",
    "condition": "連續3個營業日",
-   "measure": "再次處置",
+   "measure": "",
    "interval": "25分鐘",
    "dir": "",
    "why": "",
@@ -1514,7 +1514,7 @@
    "code": "030852",
    "name": "日月光群益64購02",
    "kind": "權證",
-   "announce": "",
+   "announce": "2026-11-24",
    "start": "2026-11-25",
    "end": "2026-12-01",
    "count": "1",
@@ -1531,7 +1531,7 @@
    "code": "072069",
    "name": "普安國票5C購01",
    "kind": "權證",
-   "announce": "",
+   "announce": "2026-11-24",
    "start": "2026-11-25",
    "end": "2026-12-01",
    "count": "1",
@@ -1548,7 +1548,7 @@
    "code": "3443",
    "name": "創意",
    "kind": "股票/ETF",
-   "announce": "",
+   "announce": "2026-11-24",
    "start": "2026-11-25",
    "end": "2026-12-01",
    "count": "1",
@@ -1565,7 +1565,7 @@
    "code": "6456",
    "name": "GIS-KY",
    "kind": "股票/ETF",
-   "announce": "",
+   "announce": "2026-11-24",
    "start": "2026-11-25",
    "end": "2026-12-01",
    "count": "1",
