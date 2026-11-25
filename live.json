@@ -1,6 +1,6 @@
 {
  "updated": "2026-11-24T18:44:53+08:00",
- "error": null,
+ "error": "TimeoutError: The read operation timed out",
  "quotes": {
   "2466": {
    "d": "2026-11-24",
